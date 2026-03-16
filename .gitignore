@@ -1,0 +1,25 @@
+# Virtual environments
+venv/
+venv_test/
+.venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Environment secrets - NEVER SHARE THIS
+backend/.env
+
+# Local database
+backend/scholarship.db
+
+# Logs
+backend/storage/logs/*.log
+
+# OS files
+.DS_Store
+Thumbs.db

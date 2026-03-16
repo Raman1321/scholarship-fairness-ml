@@ -1,0 +1,48 @@
+{
+  "model_version": "v1.0",
+  "model_type": "XGBoost",
+  "features": [
+    "sgpa",
+    "jee_score",
+    "marks_12",
+    "attendance",
+    "gender"
+  ],
+  "protected_attribute": "gender",
+  "training_samples": 2000,
+  "test_samples": 400,
+  "accuracy": 0.905,
+  "auc_roc": 0.8057,
+  "f1_score": 0.9463,
+  "cross_val_mean": 0.8057,
+  "cross_val_std": 0.0401,
+  "classification_report": {
+    "0": {
+      "precision": 0.8181818181818182,
+      "recall": 0.4576271186440678,
+      "f1-score": 0.5869565217391305,
+      "support": 59.0
+    },
+    "1": {
+      "precision": 0.9128065395095368,
+      "recall": 0.9824046920821115,
+      "f1-score": 0.9463276836158192,
+      "support": 341.0
+    },
+    "accuracy": 0.905,
+    "macro avg": {
+      "precision": 0.8654941788456776,
+      "recall": 0.7200159053630897,
+      "f1-score": 0.7666421026774748,
+      "support": 400.0
+    },
+    "weighted avg": {
+      "precision": 0.8988493931136984,
+      "recall": 0.905,
+      "f1-score": 0.8933204372390076,
+      "support": 400.0
+    }
+  },
+  "trained_at": "2026-03-14T06:12:45.849936+00:00",
+  "test_data_path": "storage/models\\test_data.csv"
+}

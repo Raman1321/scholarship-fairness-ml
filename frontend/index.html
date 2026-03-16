@@ -1,0 +1,1078 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scholarship Fairness AI — Eligibility Monitor</title>
+  <meta name="description" content="ML-powered scholarship eligibility prediction with fairness monitoring, SHAP explainability, and bias detection." />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --primary: #6c63ff;
+      --primary-dark: #5a52d5;
+      --secondary: #00d4aa;
+      --accent: #ff6b6b;
+      --accent2: #ffd93d;
+      --bg: #0f0e1a;
+      --bg2: #16152a;
+      --bg3: #1e1d35;
+      --card: rgba(255,255,255,0.04);
+      --card-border: rgba(255,255,255,0.08);
+      --text: #e8e6ff;
+      --text-muted: #8b89a4;
+      --success: #00d4aa;
+      --danger: #ff6b6b;
+      --warning: #ffd93d;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Animated background blobs */
+    .bg-blobs {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden;
+    }
+    .blob {
+      position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.15;
+      animation: float 8s ease-in-out infinite;
+    }
+    .blob-1 { width: 400px; height: 400px; background: var(--primary); top: -100px; left: -100px; animation-delay: 0s; }
+    .blob-2 { width: 300px; height: 300px; background: var(--secondary); bottom: -50px; right: 200px; animation-delay: 3s; }
+    .blob-3 { width: 250px; height: 250px; background: var(--accent); top: 40%; right: -80px; animation-delay: 6s; }
+    @keyframes float {
+      0%,100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-30px) scale(1.05); }
+    }
+
+    /* Layout */
+    .app { display: flex; flex-direction: column; min-height: 100vh; position: relative; z-index: 1; }
+
+    /* Header */
+    header {
+      background: rgba(15,14,26,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 0 32px;
+      height: 68px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      display: flex; align-items: center; justify-content: center; font-size: 20px;
+    }
+    .logo h1 { font-size: 18px; font-weight: 700; letter-spacing: -0.3px; }
+    .logo span { font-size: 12px; color: var(--text-muted); }
+
+    .header-right { display: flex; align-items: center; gap: 16px; }
+    .status-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 14px; border-radius: 100px;
+      background: rgba(0,212,170,0.12); border: 1px solid rgba(0,212,170,0.25);
+      font-size: 12px; font-weight: 500; color: var(--secondary);
+    }
+    .status-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--secondary);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+    .api-url-badge {
+      font-size: 11px; color: var(--text-muted); padding: 5px 10px;
+      background: var(--card); border: 1px solid var(--card-border); border-radius: 8px;
+    }
+
+    /* Main content */
+    main { flex: 1; padding: 32px; max-width: 1400px; margin: 0 auto; width: 100%; }
+
+    /* Auth section */
+    .auth-section {
+      background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 20px 24px; margin-bottom: 24px;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .auth-section label { font-size: 13px; color: var(--text-muted); min-width: 80px; }
+    .auth-inputs { display: flex; gap: 10px; flex: 1; flex-wrap: wrap; }
+    .auth-inputs input {
+      flex: 1; min-width: 140px; padding: 9px 14px;
+      background: rgba(255,255,255,0.05); border: 1px solid var(--card-border);
+      border-radius: 8px; color: var(--text); font-size: 13px; font-family: inherit;
+    }
+    .auth-inputs input:focus { outline: none; border-color: var(--primary); }
+    .auth-token-display {
+      font-size: 11px; color: var(--secondary); font-family: monospace;
+      background: rgba(0,212,170,0.08); padding: 4px 10px; border-radius: 6px;
+      max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* Grid layouts */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    @media (max-width: 1100px) { .grid-2 { grid-template-columns: 1fr; } }
+    @media (max-width: 800px) { .grid-3,.grid-4 { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 500px) { .grid-3,.grid-4 { grid-template-columns: 1fr; } }
+
+    /* Sections */
+    .section-title {
+      font-size: 11px; font-weight: 600; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title::after {
+      content: ''; flex: 1; height: 1px; background: var(--card-border);
+    }
+
+    /* Card */
+    .card {
+      background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 24px; position: relative; overflow: hidden;
+    }
+    .card-title {
+      font-size: 13px; font-weight: 600; color: var(--text-muted);
+      margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .icon { font-size: 16px; }
+
+    /* Form */
+    .form-card { padding: 28px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 500px) { .form-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .field label {
+      font-size: 12px; font-weight: 500; color: var(--text-muted);
+      display: flex; justify-content: space-between;
+    }
+    .field label .range-hint { color: #6c6a8a; font-weight: 400; }
+    .field input, .field select {
+      padding: 11px 14px; background: rgba(255,255,255,0.05);
+      border: 1px solid var(--card-border); border-radius: 10px;
+      color: var(--text); font-size: 14px; font-family: inherit;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .field input:focus, .field select:focus {
+      outline: none; border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+    }
+    .field select option { background: #1e1d35; }
+
+    /* Range slider */
+    .field.range-field input[type=range] {
+      padding: 4px 0; background: transparent; border: none; cursor: pointer;
+      accent-color: var(--primary);
+    }
+    .range-value {
+      font-size: 13px; font-weight: 600; color: var(--primary); min-width: 36px; text-align: right;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 12px 24px; border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; border: none; transition: all 0.2s; font-family: inherit;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: #fff; box-shadow: 0 4px 20px rgba(108,99,255,0.3);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 25px rgba(108,99,255,0.4); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-secondary {
+      background: var(--card); border: 1px solid var(--card-border); color: var(--text);
+    }
+    .btn-secondary:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-danger {
+      background: rgba(255,107,107,0.12); border: 1px solid rgba(255,107,107,0.25);
+      color: var(--danger);
+    }
+    .btn-danger:hover { background: rgba(255,107,107,0.2); }
+    .btn-success {
+      background: rgba(0,212,170,0.12); border: 1px solid rgba(0,212,170,0.25);
+      color: var(--secondary);
+    }
+    .btn-sm { padding: 7px 14px; font-size: 12px; border-radius: 8px; }
+
+    .action-row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 20px; }
+
+    /* Loading spinner */
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Result Card */
+    .result-card { padding: 28px; }
+    .result-hidden { display: none; }
+
+    .eligibility-banner {
+      border-radius: var(--radius-sm); padding: 20px 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 24px; flex-wrap: wrap; gap: 12px;
+    }
+    .eligibility-banner.eligible {
+      background: linear-gradient(135deg, rgba(0,212,170,0.12), rgba(0,212,170,0.05));
+      border: 1px solid rgba(0,212,170,0.25);
+    }
+    .eligibility-banner.not-eligible {
+      background: linear-gradient(135deg, rgba(255,107,107,0.12), rgba(255,107,107,0.05));
+      border: 1px solid rgba(255,107,107,0.25);
+    }
+    .eligibility-verdict { font-size: 22px; font-weight: 800; }
+    .eligibility-verdict.yes { color: var(--success); }
+    .eligibility-verdict.no { color: var(--danger); }
+    .eligibility-sub { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
+
+    .prob-gauge { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
+    .prob-gauge canvas { width: 110px !important; height: 110px !important; }
+    .prob-label {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; pointer-events: none;
+    }
+    .prob-label .pct { font-size: 20px; font-weight: 800; }
+    .prob-label .desc { font-size: 10px; color: var(--text-muted); }
+
+    /* SHAP chart */
+    .shap-card { padding: 24px; }
+    .shap-interpretation {
+      font-size: 13px; color: var(--text-muted); margin-top: 12px;
+      background: rgba(108,99,255,0.08); padding: 12px 14px;
+      border-radius: 8px; border-left: 3px solid var(--primary); line-height: 1.6;
+    }
+
+    /* Fairness cards */
+    .fairness-metric-card {
+      background: var(--card); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 20px; position: relative; overflow: hidden;
+    }
+    .fairness-metric-card .metric-header {
+      display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;
+    }
+    .metric-name { font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .metric-badge {
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      padding: 3px 8px; border-radius: 100px;
+    }
+    .badge-pass { background: rgba(0,212,170,0.15); color: var(--success); }
+    .badge-fail { background: rgba(255,107,107,0.15); color: var(--danger); }
+    .metric-value { font-size: 30px; font-weight: 800; line-height: 1; }
+    .metric-value.good { color: var(--success); }
+    .metric-value.bad { color: var(--danger); }
+    .metric-desc { font-size: 11px; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+    .metric-bar-track {
+      height: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 2px; margin-top: 10px; overflow: hidden;
+    }
+    .metric-bar-fill {
+      height: 100%; border-radius: 2px;
+      transition: width 1s cubic-bezier(0.4,0,0.2,1);
+    }
+
+    /* Selection rates */
+    .selection-rate-bar { display: flex; gap: 12px; align-items: center; margin-top: 8px; }
+    .selection-rate-bar .group { flex: 1; }
+    .selection-rate-bar .group-name { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+    .selection-rate-bar .bar-track {
+      height: 8px; background: rgba(255,255,255,0.06);
+      border-radius: 4px; overflow: hidden;
+    }
+    .selection-rate-bar .bar-fill-female {
+      height: 100%; background: linear-gradient(90deg, #ff6b6b, #ff8e8e);
+      border-radius: 4px; transition: width 1s ease;
+    }
+    .selection-rate-bar .bar-fill-male {
+      height: 100%; background: linear-gradient(90deg, var(--primary), #9d97ff);
+      border-radius: 4px; transition: width 1s ease;
+    }
+    .selection-rate-bar .pct { font-size: 12px; font-weight: 600; }
+
+    /* Overall fairness banner */
+    .fairness-overall {
+      padding: 16px 20px; border-radius: var(--radius-sm); margin-bottom: 20px;
+      display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 600;
+    }
+    .fairness-overall.fair {
+      background: rgba(0,212,170,0.1); border: 1px solid rgba(0,212,170,0.2);
+      color: var(--success);
+    }
+    .fairness-overall.unfair {
+      background: rgba(255,107,107,0.1); border: 1px solid rgba(255,107,107,0.2);
+      color: var(--danger);
+    }
+    .fairness-overall .icon { font-size: 20px; }
+
+    /* Prediction history table */
+    .table-wrapper { overflow-x: auto; border-radius: var(--radius-sm); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th {
+      text-align: left; padding: 10px 14px;
+      background: rgba(255,255,255,0.04); color: var(--text-muted);
+      font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+      border-bottom: 1px solid var(--card-border);
+    }
+    tbody tr { border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.15s; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    tbody td { padding: 11px 14px; }
+    .pill {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600;
+    }
+    .pill-yes { background: rgba(0,212,170,0.15); color: var(--success); }
+    .pill-no { background: rgba(255,107,107,0.15); color: var(--danger); }
+    .pill-gender { background: rgba(108,99,255,0.15); color: var(--primary); }
+    .prob-bar { display: flex; align-items: center; gap: 8px; }
+    .prob-bar .track {
+      flex: 1; height: 4px; background: rgba(255,255,255,0.08);
+      border-radius: 2px; overflow: hidden; max-width: 80px;
+    }
+    .prob-bar .fill { height: 100%; border-radius: 2px; background: var(--primary); }
+
+    /* Model info ribbon */
+    .ribbon {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      padding: 14px 20px; background: rgba(108,99,255,0.06);
+      border: 1px solid rgba(108,99,255,0.15); border-radius: var(--radius-sm);
+      margin-bottom: 24px;
+    }
+    .ribbon-item { display: flex; flex-direction: column; gap: 2px; }
+    .ribbon-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; }
+    .ribbon-value { font-size: 16px; font-weight: 700; color: var(--text); }
+
+    /* Toast */
+    .toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+    .toast {
+      padding: 12px 18px; border-radius: 10px; font-size: 13px;
+      backdrop-filter: blur(20px); border: 1px solid var(--card-border);
+      animation: slideUp 0.3s ease; max-width: 320px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .toast-success { background: rgba(0,212,170,0.15); color: var(--success); border-color: rgba(0,212,170,0.2); }
+    .toast-error { background: rgba(255,107,107,0.15); color: var(--danger); border-color: rgba(255,107,107,0.2); }
+    .toast-info { background: rgba(108,99,255,0.15); color: var(--primary); border-color: rgba(108,99,255,0.2); }
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+
+    /* Placeholder states */
+    .placeholder {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 40px 20px; color: var(--text-muted); gap: 12px; text-align: center;
+    }
+    .placeholder .emoji { font-size: 40px; opacity: 0.5; }
+    .placeholder p { font-size: 14px; }
+
+    /* Divider */
+    .divider { height: 1px; background: var(--card-border); margin: 28px 0; }
+
+    /* Section spacing */
+    .mb-24 { margin-bottom: 24px; }
+    .mt-24 { margin-top: 24px; }
+  </style>
+</head>
+<body>
+
+<div class="bg-blobs">
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  <div class="blob blob-3"></div>
+</div>
+
+<div class="app">
+  <!-- ── Header ────────────────────────────────────────────────────────────── -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🎓</div>
+      <div>
+        <h1>FairnessAI</h1>
+        <span>Scholarship Eligibility Monitor</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-badge" id="api-status-badge">
+        <div class="status-dot"></div>
+        <span id="api-status-text">Checking…</span>
+      </div>
+      <div class="api-url-badge" id="api-url-label">API: localhost:8000/v1</div>
+    </div>
+  </header>
+
+  <main>
+    <!-- ── Auth ──────────────────────────────────────────────────────────── -->
+    <div class="auth-section">
+      <label>🔐 Auth</label>
+      <div class="auth-inputs">
+        <input type="text" id="auth-username" placeholder="Username" value="admin" />
+        <input type="password" id="auth-password" placeholder="Password" value="admin123" />
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="doRegister()" id="btn-register">Register</button>
+      <button class="btn btn-primary btn-sm" onclick="doLogin()" id="btn-login">Login</button>
+      <div class="auth-token-display" id="token-display" style="display:none">✅ Authenticated</div>
+    </div>
+
+    <!-- ── Model ribbon ──────────────────────────────────────────────────── -->
+    <div class="ribbon" id="model-ribbon" style="display:none">
+      <div class="ribbon-item"><span class="ribbon-label">Model</span><span class="ribbon-value" id="r-version">—</span></div>
+      <div class="ribbon-item"><span class="ribbon-label">Accuracy</span><span class="ribbon-value" id="r-accuracy">—</span></div>
+      <div class="ribbon-item"><span class="ribbon-label">AUC-ROC</span><span class="ribbon-value" id="r-auc">—</span></div>
+      <div class="ribbon-item"><span class="ribbon-label">F1 Score</span><span class="ribbon-value" id="r-f1">—</span></div>
+      <div class="ribbon-item"><span class="ribbon-label">CV Score</span><span class="ribbon-value" id="r-cv">—</span></div>
+      <div class="ribbon-item"><span class="ribbon-label">Trained on</span><span class="ribbon-value" id="r-samples">—</span></div>
+    </div>
+
+    <!-- ── Two-column layout ─────────────────────────────────────────────── -->
+    <div class="grid-2 mb-24">
+
+      <!-- FORM CARD -->
+      <div class="card form-card">
+        <div class="card-title">
+          <span class="icon">📋</span>
+          Student Eligibility Prediction
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label>Student Name</label>
+            <input type="text" id="f-name" placeholder="e.g. Priya Sharma" />
+          </div>
+          <div class="field">
+            <label>Gender <span class="range-hint">protected attribute</span></label>
+            <select id="f-gender">
+              <option value="female">♀ Female</option>
+              <option value="male">♂ Male</option>
+              <option value="other">⚧ Other</option>
+            </select>
+          </div>
+
+          <div class="field range-field">
+            <label>SGPA <span class="range-hint">0 – 10</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="range" id="f-sgpa" min="0" max="10" step="0.1" value="7.5"
+                     oninput="document.getElementById('v-sgpa').textContent=this.value" style="flex:1" />
+              <span class="range-value" id="v-sgpa">7.5</span>
+            </div>
+          </div>
+          <div class="field range-field">
+            <label>JEE Score <span class="range-hint">0 – 360</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="range" id="f-jee" min="0" max="360" step="1" value="180"
+                     oninput="document.getElementById('v-jee').textContent=this.value" style="flex:1" />
+              <span class="range-value" id="v-jee">180</span>
+            </div>
+          </div>
+          <div class="field range-field">
+            <label>Class 12th % <span class="range-hint">0 – 100</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="range" id="f-marks" min="0" max="100" step="0.5" value="75"
+                     oninput="document.getElementById('v-marks').textContent=this.value" style="flex:1" />
+              <span class="range-value" id="v-marks">75</span>
+            </div>
+          </div>
+          <div class="field range-field">
+            <label>Attendance % <span class="range-hint">0 – 100</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="range" id="f-att" min="0" max="100" step="0.5" value="85"
+                     oninput="document.getElementById('v-att').textContent=this.value" style="flex:1" />
+              <span class="range-value" id="v-att">85</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button class="btn btn-primary" onclick="runPredict()" id="btn-predict">
+            ✨ Predict Eligibility
+          </button>
+          <button class="btn btn-secondary" onclick="addStudent()" id="btn-add-student">
+            ➕ Save Student
+          </button>
+          <button class="btn btn-secondary" onclick="loadFairness()" id="btn-fairness">
+            ⚖️ Fairness Report
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="retrain()" id="btn-retrain">
+            🔄 Retrain Model
+          </button>
+        </div>
+
+        <!-- CSV Training Data Upload -->
+        <div style="margin-top:14px;padding:14px 16px;background:rgba(108,99,255,0.06);border:1px solid rgba(108,99,255,0.15);border-radius:10px;">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:10px;">📂 Training Data (optional)</div>
+          <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+            <label id="csv-label" style="display:flex;align-items:center;gap:8px;padding:7px 14px;background:var(--card);border:1px dashed var(--card-border);border-radius:8px;cursor:pointer;font-size:12px;color:var(--text-muted);transition:border-color 0.2s;"
+              onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--card-border)'">
+              📄 <span id="csv-file-name">Choose CSV file…</span>
+              <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="onCsvSelected(this)" />
+            </label>
+            <button class="btn btn-secondary btn-sm" onclick="uploadCsv()" id="btn-upload-csv" disabled>⬆ Upload</button>
+            <button class="btn btn-secondary btn-sm" onclick="checkCsvStatus()" id="btn-csv-status">ℹ Info</button>
+            <span id="csv-status-text" style="font-size:11px;color:var(--text-muted);font-style:italic;">No CSV uploaded — retrain uses synthetic data</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESULT CARD -->
+      <div class="card result-card" id="result-card">
+        <div class="placeholder" id="result-placeholder">
+          <div class="emoji">🧠</div>
+          <p>Run a prediction to see eligibility result, probability, and SHAP explanation here.</p>
+        </div>
+
+        <div id="result-content" style="display:none">
+          <!-- Eligibility Banner -->
+          <div class="eligibility-banner" id="eligibility-banner">
+            <div>
+              <div class="eligibility-verdict" id="verdict-text"></div>
+              <div class="eligibility-sub" id="verdict-sub"></div>
+            </div>
+            <div class="prob-gauge">
+              <canvas id="gaugeChart"></canvas>
+              <div class="prob-label">
+                <span class="pct" id="prob-pct">—</span>
+                <span class="desc">probability</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHAP Explanation -->
+          <div class="card-title"><span class="icon">🔍</span> SHAP Feature Contributions</div>
+          <canvas id="shapChart" height="160"></canvas>
+          <div class="shap-interpretation" id="shap-interp"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Fairness Section ────────────────────────────────────────────────── -->
+    <div class="section-title">⚖️ Fairness Monitoring Dashboard</div>
+
+    <div id="fairness-placeholder" class="card" style="padding:0">
+      <div class="placeholder" style="padding:40px">
+        <div class="emoji">⚖️</div>
+        <p>Click "Fairness Report" to compute bias metrics across gender groups.</p>
+      </div>
+    </div>
+
+    <div id="fairness-content" style="display:none">
+      <div id="fairness-overall-banner" class="fairness-overall fair mb-24">
+        <span class="icon" id="fair-icon">✅</span>
+        <span id="fair-text">Overall Fairness: Checking…</span>
+      </div>
+
+      <div class="grid-3 mb-24" id="metrics-grid"></div>
+
+      <!-- Selection rates visualization -->
+      <div class="card mb-24" id="selection-rates-card">
+        <div class="card-title"><span class="icon">📊</span> Group Selection Rates by Gender</div>
+        <canvas id="selectionRatesChart" height="80"></canvas>
+      </div>
+    </div>
+
+    <!-- ── Prediction History ──────────────────────────────────────────────── -->
+    <div class="section-title mt-24">📜 Prediction History</div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:0"><span class="icon">🕒</span> Recent Predictions</div>
+        <button class="btn btn-secondary btn-sm" onclick="loadHistory()">↻ Refresh</button>
+      </div>
+      <div class="table-wrapper">
+        <table id="history-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>Student ID</th><th>Eligible</th>
+              <th>Probability</th><th>Model</th><th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">
+              Login and run predictions to see history</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ─── Config ───────────────────────────────────────────────────────────────────
+const API = 'http://localhost:8000/v1';
+let token = '';
+let gaugeChart = null;
+let shapChart = null;
+let selectionChart = null;
+let lastStudentId = null;
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  const icons = { success: '✅', error: '❌', info: 'ℹ️' };
+  t.innerHTML = `<span>${icons[type]}</span> ${msg}`;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function setBusy(id, loading) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  if (loading) {
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = `<div class="spinner"></div> Loading…`;
+    btn.disabled = true;
+  } else {
+    btn.innerHTML = btn.dataset.orig || btn.innerHTML;
+    btn.disabled = false;
+  }
+}
+
+async function apiFetch(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch(API + path, { headers, ...opts });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+// ─── API Status check ─────────────────────────────────────────────────────────
+async function checkStatus() {
+  try {
+    const h = await fetch(API + '/health');
+    const badge = document.getElementById('api-status-badge');
+    const text = document.getElementById('api-status-text');
+    if (h.ok) {
+      badge.style.background = 'rgba(0,212,170,0.12)';
+      badge.style.borderColor = 'rgba(0,212,170,0.25)';
+      badge.querySelector('.status-dot').style.background = 'var(--secondary)';
+      text.textContent = 'API Online';
+    } else {
+      badge.style.background = 'rgba(255,107,107,0.12)';
+      badge.style.borderColor = 'rgba(255,107,107,0.25)';
+      badge.querySelector('.status-dot').style.background = 'var(--danger)';
+      text.textContent = 'API Error';
+    }
+  } catch {
+    const text = document.getElementById('api-status-text');
+    const badge = document.getElementById('api-status-badge');
+    text.textContent = 'API Offline';
+    badge.style.background = 'rgba(255,107,107,0.12)';
+    badge.style.borderColor = 'rgba(255,107,107,0.25)';
+    badge.querySelector('.status-dot').style.background = 'var(--danger)';
+  }
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function doRegister() {
+  const username = document.getElementById('auth-username').value;
+  const password = document.getElementById('auth-password').value;
+  setBusy('btn-register', true);
+  try {
+    await apiFetch('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, role: 'admin' }),
+    });
+    toast('User registered! Now login.', 'success');
+  } catch (e) {
+    toast(`Register: ${e.message}`, 'error');
+  }
+  setBusy('btn-register', false);
+}
+
+async function doLogin() {
+  const username = document.getElementById('auth-username').value;
+  const password = document.getElementById('auth-password').value;
+  setBusy('btn-login', true);
+  try {
+    const data = await apiFetch('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    token = data.access_token;
+    document.getElementById('token-display').style.display = 'block';
+    document.getElementById('token-display').textContent = `✅ ${data.username} (${data.role})`;
+    toast('Logged in successfully!', 'success');
+    await loadHistory();
+  } catch (e) {
+    toast(`Login failed: ${e.message}`, 'error');
+  }
+  setBusy('btn-login', false);
+}
+
+// ─── Add Student ──────────────────────────────────────────────────────────────
+async function addStudent() {
+  const name = document.getElementById('f-name').value || 'Student';
+  setBusy('btn-add-student', true);
+  try {
+    const student = await apiFetch('/students/', {
+      method: 'POST',
+      body: JSON.stringify({
+        name,
+        sgpa: parseFloat(document.getElementById('f-sgpa').value),
+        jee_score: parseInt(document.getElementById('f-jee').value),
+        marks_12: parseFloat(document.getElementById('f-marks').value),
+        attendance: parseFloat(document.getElementById('f-att').value),
+        gender: document.getElementById('f-gender').value,
+      }),
+    });
+    lastStudentId = student.id;
+    toast(`Student "${student.name}" saved (ID: ${student.id})`, 'success');
+  } catch (e) {
+    toast(`Save student: ${e.message}`, 'error');
+  }
+  setBusy('btn-add-student', false);
+}
+
+// ─── Predict ──────────────────────────────────────────────────────────────────
+async function runPredict() {
+  if (!token) { toast('Please login first', 'error'); return; }
+  setBusy('btn-predict', true);
+  try {
+    const payload = {
+      sgpa: parseFloat(document.getElementById('f-sgpa').value),
+      jee_score: parseInt(document.getElementById('f-jee').value),
+      marks_12: parseFloat(document.getElementById('f-marks').value),
+      attendance: parseFloat(document.getElementById('f-att').value),
+      gender: document.getElementById('f-gender').value,
+    };
+    if (lastStudentId) payload.student_id = lastStudentId;
+
+    const data = await apiFetch('/predict', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    renderResult(data);
+    await loadHistory();
+    toast(data.eligible ? '✅ Eligible for scholarship!' : '❌ Not eligible', data.eligible ? 'success' : 'error');
+  } catch (e) {
+    toast(`Prediction failed: ${e.message}`, 'error');
+  }
+  setBusy('btn-predict', false);
+}
+
+function renderResult(data) {
+  document.getElementById('result-placeholder').style.display = 'none';
+  document.getElementById('result-content').style.display = 'block';
+
+  const banner = document.getElementById('eligibility-banner');
+  const verdict = document.getElementById('verdict-text');
+  const sub = document.getElementById('verdict-sub');
+  const pct = document.getElementById('prob-pct');
+
+  banner.className = `eligibility-banner ${data.eligible ? 'eligible' : 'not-eligible'}`;
+  verdict.textContent = data.eligible ? '✅ Eligible for Scholarship' : '❌ Not Eligible';
+  verdict.className = `eligibility-verdict ${data.eligible ? 'yes' : 'no'}`;
+  sub.textContent = `${data.message || ''} | Model: ${data.model_version}`;
+  pct.textContent = `${Math.round(data.probability * 100)}%`;
+
+  // Gauge donut chart
+  const gaugeCtx = document.getElementById('gaugeChart').getContext('2d');
+  if (gaugeChart) gaugeChart.destroy();
+  const prob = data.probability;
+  const color = prob >= 0.7 ? '#00d4aa' : prob >= 0.5 ? '#ffd93d' : '#ff6b6b';
+  gaugeChart = new Chart(gaugeCtx, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [prob * 100, (1 - prob) * 100],
+        backgroundColor: [color, 'rgba(255,255,255,0.05)'],
+        borderWidth: 0,
+        cutout: '75%',
+      }]
+    },
+    options: { responsive: false, plugins: { legend: { display: false }, tooltip: { enabled: false } } }
+  });
+
+  // SHAP Chart
+  if (data.shap_values) {
+    const features = Object.keys(data.shap_values);
+    const values = Object.values(data.shap_values);
+    const colors = values.map(v => v >= 0 ? 'rgba(0,212,170,0.7)' : 'rgba(255,107,107,0.7)');
+
+    const shapCtx = document.getElementById('shapChart').getContext('2d');
+    if (shapChart) shapChart.destroy();
+    shapChart = new Chart(shapCtx, {
+      type: 'bar',
+      data: {
+        labels: features,
+        datasets: [{
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 6,
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: ctx => `  SHAP: ${ctx.raw >= 0 ? '+' : ''}${ctx.raw.toFixed(4)}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: '#8b89a4', font: { size: 11 } },
+            border: { display: false }
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#e8e6ff', font: { size: 12 } },
+            border: { display: false }
+          }
+        }
+      }
+    });
+
+    document.getElementById('shap-interp').textContent =
+      data.shap_values ? `Feature contribution breakdown: positive values (green) push toward eligibility, negative values (red) push against it.` : '';
+  }
+}
+
+// ─── Fairness Report ──────────────────────────────────────────────────────────
+async function loadFairness() {
+  if (!token) { toast('Please login first', 'error'); return; }
+  setBusy('btn-fairness', true);
+  try {
+    const data = await apiFetch('/fairness-report');
+    renderFairness(data);
+    toast('Fairness report loaded', 'success');
+  } catch (e) {
+    toast(`Fairness: ${e.message}`, 'error');
+  }
+  setBusy('btn-fairness', false);
+}
+
+function renderFairness(data) {
+  document.getElementById('fairness-placeholder').style.display = 'none';
+  document.getElementById('fairness-content').style.display = 'block';
+
+  // Overall banner
+  const banner = document.getElementById('fairness-overall-banner');
+  const icon = document.getElementById('fair-icon');
+  const text = document.getElementById('fair-text');
+  banner.className = `fairness-overall mb-24 ${data.overall_fair ? 'fair' : 'unfair'}`;
+  icon.textContent = data.overall_fair ? '✅' : '⚠️';
+  text.textContent = data.overall_fair
+    ? `✅ Model passes fairness checks — all metrics within the 0.10 threshold`
+    : `⚠️ Fairness violations detected — bias mitigation recommended (${data.n_samples} samples analyzed)`;
+
+  // Metric cards
+  const grid = document.getElementById('metrics-grid');
+  grid.innerHTML = '';
+  const descriptions = {
+    'Demographic Parity Difference': 'Difference in positive prediction rates between male and female students.',
+    'Equalized Odds Difference': 'Max difference in both true positive and false positive rates across groups.',
+    'Equal Opportunity Difference': 'Difference in scholarship grant rates among truly eligible students.',
+  };
+
+  data.metrics.forEach(m => {
+    const pct = Math.min(100, (m.value / 0.30) * 100);
+    const card = document.createElement('div');
+    card.className = 'fairness-metric-card';
+    card.innerHTML = `
+      <div class="metric-header">
+        <span class="metric-name">${m.name}</span>
+        <span class="metric-badge ${m.passed ? 'badge-pass' : 'badge-fail'}">${m.passed ? 'PASS' : 'FAIL'}</span>
+      </div>
+      <div class="metric-value ${m.passed ? 'good' : 'bad'}">${m.value.toFixed(4)}</div>
+      <div class="metric-desc">${descriptions[m.name] || m.description} Threshold: ≤${m.threshold}</div>
+      <div class="metric-bar-track">
+        <div class="metric-bar-fill" style="width:${pct}%;background:${m.passed ? 'var(--success)' : 'var(--danger)'}"></div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+
+  // Also add selection rates chart using Chart.js
+  renderSelectionChart(data);
+}
+
+function renderSelectionChart(data) {
+  const ctx = document.getElementById('selectionRatesChart').getContext('2d');
+  if (selectionChart) selectionChart.destroy();
+
+  const metrics = data.metrics.map(m => m.name.split(' ').slice(0,2).join(' '));
+  const values = data.metrics.map(m => m.value);
+  const thresholds = data.metrics.map(m => m.threshold);
+  const colors = data.metrics.map(m => m.passed ? 'rgba(0,212,170,0.6)' : 'rgba(255,107,107,0.6)');
+
+  selectionChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: metrics,
+      datasets: [
+        {
+          label: 'Metric Value',
+          data: values,
+          backgroundColor: colors,
+          borderRadius: 8,
+          borderWidth: 0,
+        },
+        {
+          label: 'Threshold (0.10)',
+          data: thresholds,
+          type: 'line',
+          borderColor: 'rgba(255,217,61,0.8)',
+          borderDash: [6, 3],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          labels: { color: '#8b89a4', font: { size: 11 } }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => `  ${ctx.dataset.label}: ${Number(ctx.raw).toFixed(4)}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#8b89a4', font: { size: 11 } },
+          border: { display: false }
+        },
+        y: {
+          beginAtZero: true,
+          max: 0.35,
+          grid: { color: 'rgba(255,255,255,0.04)' },
+          ticks: { color: '#8b89a4', font: { size: 11 } },
+          border: { display: false }
+        }
+      }
+    }
+  });
+}
+
+// ─── CSV Upload ───────────────────────────────────────────────────────────────
+function onCsvSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('csv-file-name').textContent = file.name;
+  document.getElementById('btn-upload-csv').disabled = false;
+}
+
+async function uploadCsv() {
+  if (!token) { toast('Please login first', 'error'); return; }
+  const input = document.getElementById('csv-input');
+  if (!input.files[0]) { toast('Select a CSV file first', 'error'); return; }
+  setBusy('btn-upload-csv', true);
+  try {
+    const form = new FormData();
+    form.append('file', input.files[0]);
+    const res = await fetch(API + '/upload-training-data', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: form,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || res.statusText);
+    document.getElementById('csv-status-text').textContent =
+      `✅ ${data.records} records uploaded (${(data.eligibility_rate * 100).toFixed(1)}% eligible)`;
+    document.getElementById('csv-status-text').style.color = 'var(--success)';
+    toast(data.message, 'success');
+  } catch (e) {
+    toast(`Upload failed: ${e.message}`, 'error');
+  }
+  setBusy('btn-upload-csv', false);
+}
+
+async function checkCsvStatus() {
+  if (!token) { toast('Please login first', 'error'); return; }
+  try {
+    const data = await apiFetch('/upload-training-data/info');
+    const el = document.getElementById('csv-status-text');
+    if (data.uploaded) {
+      el.textContent = `✅ ${data.records} records (${data.size_kb} KB) — ready for retrain`;
+      el.style.color = 'var(--success)';
+    } else {
+      el.textContent = 'No CSV uploaded — retrain uses synthetic data';
+      el.style.color = 'var(--text-muted)';
+    }
+  } catch (e) {
+    toast(`Status check: ${e.message}`, 'error');
+  }
+}
+
+// ─── Retrain ──────────────────────────────────────────────────────────────────
+async function retrain() {
+  if (!token) { toast('Please login first', 'error'); return; }
+  setBusy('btn-retrain', true);
+  try {
+    const data = await apiFetch('/retrain?n_samples=2000', { method: 'POST' });
+    document.getElementById('model-ribbon').style.display = 'flex';
+    document.getElementById('r-version').textContent = data.model_version;
+    document.getElementById('r-accuracy').textContent = `${(data.accuracy * 100).toFixed(1)}%`;
+    document.getElementById('r-auc').textContent = data.auc_roc.toFixed(3);
+    document.getElementById('r-f1').textContent = data.f1_score.toFixed(3);
+    document.getElementById('r-cv').textContent = data.cross_val_mean.toFixed(3);
+    document.getElementById('r-samples').textContent = data.training_samples.toLocaleString();
+    toast(data.message, 'success');
+  } catch (e) {
+    toast(`Retrain: ${e.message}`, 'error');
+  }
+  setBusy('btn-retrain', false);
+}
+
+// ─── Prediction History ───────────────────────────────────────────────────────
+async function loadHistory() {
+  if (!token) return;
+  try {
+    const data = await apiFetch('/predictions?limit=10');
+    const tbody = document.getElementById('history-body');
+    if (!data.length) {
+      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted)">No predictions yet</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(p => {
+      const prob = (p.probability * 100).toFixed(1);
+      const date = new Date(p.created_at).toLocaleString();
+      return `<tr>
+        <td>#${p.id}</td>
+        <td>${p.student_id}</td>
+        <td><span class="pill ${p.eligible ? 'pill-yes' : 'pill-no'}">${p.eligible ? '✅ Yes' : '❌ No'}</span></td>
+        <td>
+          <div class="prob-bar">
+            <div class="track"><div class="fill" style="width:${prob}%"></div></div>
+            <span style="font-size:12px;font-weight:600">${prob}%</span>
+          </div>
+        </td>
+        <td style="color:var(--text-muted);font-size:12px">${p.model_version}</td>
+        <td style="color:var(--text-muted);font-size:12px">${date}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    // Silently fail if no predictions endpoint
+  }
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+checkStatus();
+setInterval(checkStatus, 30000);
+</script>
+</body>
+</html>
